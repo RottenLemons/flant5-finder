@@ -16,7 +16,7 @@ from nltk.tokenize import sent_tokenize
 from huggingface_hub import login
 import wandb
 from up_trainer import UpWeightedSeq2SeqTrainer
-from down_trainer import DownWeightedSeq2SeqTrainer
+from down_trainer import DownSampledSeq2SeqTrainer
 
 nltk.download("punkt")
 metric = evaluate.load("f1")
