@@ -23,7 +23,7 @@ metric = evaluate.load("f1")
 torch.backends.cuda.matmul.allow_tf32 = True
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--imsol', type=str, required=False, default='none', choices=['none', 'up-weight', 'down=sample'], help='Imbalance Solution Allowed values: none, up-weight, down-sample')
+parser.add_argument('--imsol', type=str, required=False, default='none', choices=['none', 'up-weight', 'down-sample'], help='Imbalance Solution Allowed values: none, up-weight, down-sample')
 parser.add_argument('--split', type=float, required=False, default=0.1, help='Test Split Percentage')
 parser.add_argument('--epochs', type=int, required=False, default=3, help='Number of epochs')
 parser.add_argument('--hftoken', type=str, required=True, help='HuggingFace Token')
