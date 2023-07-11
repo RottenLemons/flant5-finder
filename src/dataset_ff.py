@@ -3,6 +3,7 @@ from datasets import *
 
 def make_dataset(split, imsol):
     dataset = load_dataset('reddit',cache_dir="/work/09386/mahirs/ls6/flant5-finder/src/cache") # Negative Samples
+
     df1 = pd.read_json('InstructionWild/data_v2/user_4.jsonl', lines=True) # Positive Samples
     df2 = pd.read_json('InstructionWild/data_v2/user_1.jsonl', lines=True)
     df2 = df2.drop('instruction_type', axis=1)
