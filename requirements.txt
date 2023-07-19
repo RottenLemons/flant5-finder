@@ -1,3 +1,5 @@
+accelerate==0.20.1
+torch
 transformers==4.30.2
 datasets==2.13.0
 evaluate==0.4.0
@@ -6,3 +8,9 @@ nltk
 pandas==2.0.2
 wandb==0.15.4
 matplotlib==3.7.1
+scikit-learn
+
+
+
+
+

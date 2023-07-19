@@ -1,5 +1,4 @@
 import torch
-from huggingface_hub import login
 import pandas as pd
 import matplotlib.pyplot as plt
 import os
@@ -19,8 +18,9 @@ from up_trainer import UpWeightedSeq2SeqTrainer
 from down_trainer import DownSampledSeq2SeqTrainer
 
 nltk.download("punkt")
-metric = evaluate.load("f1")
+metric = evaluate.load("f1",cache_dir="/work/09386/mahirs/ls6/flant5-finder/src/cache")
 torch.backends.cuda.matmul.allow_tf32 = True
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--imsol', type=str, required=False, default='none', choices=['none', 'up-weight', 'down-sample'], help='Imbalance Solution Allowed values: none, up-weight, down-sample')
@@ -45,10 +45,8 @@ def main():
     max_source_length = max([len(x) for x in tokenized_inputs["input_ids"]])
     print(f"Max source length: {max_source_length}") # Get Longest Token Length
 
-    tokenized_targets = concatenate_datasets([dataset["train"], dataset["test"]]).map(lambda x: tokenizer(x["labels"], truncation=True), batched=True, remove_columns=['text', 'labels'])
-    max_target_length = max([len(x) for x in tokenized_targets["input_ids"]])
-    print(f"Max target length: {max_target_length}")
-
+    tokenized_targets = 512
+    max_target_length = 3
     del tokenized_inputs
     del tokenized_targets
 
@@ -58,7 +56,7 @@ def main():
         model_inputs = tokenizer(inputs, max_length=max_source_length, padding=padding, truncation=True)
 
         labels = tokenizer(text_target=sample["labels"], max_length=max_target_length, padding=padding, truncation=True)
-        
+
         if padding == "max_length":
             labels["input_ids"] = [
                 [(l if l != tokenizer.pad_token_id else -100) for l in label] for label in labels["input_ids"]
@@ -66,7 +64,7 @@ def main():
 
         model_inputs["labels"] = labels["input_ids"]
         return model_inputs
-    
+
     tokenized_dataset = dataset.map(preprocess_function, batched=True, remove_columns=['text', 'labels'])
 
     def postprocess_text(preds, labels): # Convert output to text
@@ -109,12 +107,12 @@ def main():
         per_device_train_batch_size=8,
         per_device_eval_batch_size=8,
         predict_with_generate=True,
-        fp16=False, 
+        fp16=True,
         learning_rate=3e-4,
 
         num_train_epochs=arg.epochs,
         logging_dir=f"{repository_id}/logs",
-        logging_strategy="epoch", 
+        logging_strategy="epoch",
         evaluation_strategy="no",
         save_strategy="epoch",
         save_total_limit=2,
@@ -136,7 +134,9 @@ def main():
             train_dataset=tokenized_dataset["train"],
             eval_dataset=tokenized_dataset["test"],
             compute_metrics=compute_metrics,
-        )
+    )
+
+
     elif arg.imsol == 'up-weight':
             trainer = UpWeightedSeq2SeqTrainer(
             model=model,
@@ -145,7 +145,7 @@ def main():
             train_dataset=tokenized_dataset["train"],
             eval_dataset=tokenized_dataset["test"],
             compute_metrics=compute_metrics,
-        ) 
+        )
     else:
         trainer = DownSampledSeq2SeqTrainer(
             model=model,
@@ -155,7 +155,7 @@ def main():
             eval_dataset=tokenized_dataset["test"],
             compute_metrics=compute_metrics,
         )
-        
+
     trainer.train()
     trainer.evaluate()
     trainer.save_model(f"{repository_id}/model")
