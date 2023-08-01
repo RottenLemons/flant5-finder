@@ -16,6 +16,9 @@ from huggingface_hub import login
 import wandb
 from up_trainer import UpWeightedSeq2SeqTrainer
 from down_trainer import DownSampledSeq2SeqTrainer
+from sophia import SophiaG
+from tqdm import tqdm
+from torch.utils.data import DataLoader
 
 nltk.download("punkt")
 metric = evaluate.load("f1",cache_dir="/work/09386/mahirs/ls6/flant5-finder/src/cache")
@@ -76,8 +79,8 @@ def main():
 
         return preds, labels
 
-    def compute_metrics(eval_preds):
-        preds, labels = eval_preds
+    def compute_metrics(preds, labels):
+        
         if isinstance(preds, tuple):
             preds = preds[0]
         decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True)
@@ -102,65 +105,94 @@ def main():
 
     repository_id = arg.hfname
 
-    training_args = Seq2SeqTrainingArguments(
-        output_dir=repository_id,
-        per_device_train_batch_size=8,
-        per_device_eval_batch_size=8,
-        predict_with_generate=True,
-        fp16=True,
-        learning_rate=3e-4,
+    optimizer = SophiaG(model.parameters(), lr=3e-4)
 
-        num_train_epochs=arg.epochs,
-        logging_dir=f"{repository_id}/logs",
-        logging_strategy="epoch",
-        evaluation_strategy="no",
-        save_strategy="epoch",
-        save_total_limit=2,
-        load_best_model_at_end=False,
-        push_to_hub=True,
-        hub_strategy="every_save",
-        hub_model_id=repository_id,
-        report_to="wandb",
-        run_name=arg.wname,
+    train_dl = DataLoader(
+        tokenized_dataset['train'], shuffle=True, batch_size=128, collate_fn=data_collator
     )
 
-    trainer = None
+    test_dl = DataLoader(
+        tokenized_dataset['test'], shuffle=True, batch_size=128, collate_fn=data_collator
+    )
+
+    # training_args = Seq2SeqTrainingArguments(
+    #     output_dir=repository_id,
+    #     per_device_train_batch_size=8,
+    #     per_device_eval_batch_size=8,
+    #     predict_with_generate=True,
+    #     fp16=True,
+    #     learning_rate=3e-4,
+
+    #     num_train_epochs=arg.epochs,
+    #     logging_dir=f"{repository_id}/logs",
+    #     logging_strategy="epoch",
+    #     evaluation_strategy="no",
+    #     save_strategy="epoch",
+    #     save_total_limit=2,
+    #     load_best_model_at_end=False,
+    #     push_to_hub=True,
+    #     hub_strategy="every_save",
+    #     hub_model_id=repository_id,
+    #     report_to="wandb",
+    #     run_name=arg.wname,
+    # )
+
+    epochs = 1
+    training_steps = epochs * len(train_dl)
 
     if arg.imsol == 'none':
-        trainer = Seq2SeqTrainer(
-            model=model,
-            args=training_args,
-            data_collator=data_collator,
-            train_dataset=tokenized_dataset["train"],
-            eval_dataset=tokenized_dataset["test"],
-            compute_metrics=compute_metrics,
-    )
+    #     trainer = Seq2SeqTrainer(
+    #         model=model,
+    #         args=training_args,
+    #         data_collator=data_collator,
+    #         train_dataset=tokenized_dataset["train"],
+    #         eval_dataset=tokenized_dataset["test"],
+    #         compute_metrics=compute_metrics,
+    # )
+        loss_fn = torch.nn.CrossEntropyLoss(ignore_index=label_pad_token_id)
 
 
-    elif arg.imsol == 'up-weight':
-            trainer = UpWeightedSeq2SeqTrainer(
-            model=model,
-            args=training_args,
-            data_collator=data_collator,
-            train_dataset=tokenized_dataset["train"],
-            eval_dataset=tokenized_dataset["test"],
-            compute_metrics=compute_metrics,
-        )
-    else:
-        trainer = DownSampledSeq2SeqTrainer(
-            model=model,
-            args=training_args,
-            data_collator=data_collator,
-            train_dataset=tokenized_dataset["train"],
-            eval_dataset=tokenized_dataset["test"],
-            compute_metrics=compute_metrics,
-        )
+    # elif arg.imsol == 'up-weight':
+    #     #     trainer = UpWeightedSeq2SeqTrainer(
+    #     #     model=model,
+    #     #     args=training_args,
+    #     #     data_collator=data_collator,
+    #     #     train_dataset=tokenized_dataset["train"],
+    #     #     eval_dataset=tokenized_dataset["test"],
+    #     #     compute_metrics=compute_metrics,
+    #     # )
+    # else:
+    #     # trainer = DownSampledSeq2SeqTrainer(
+    #     #     model=model,
+    #     #     args=training_args,
+    #     #     data_collator=data_collator,
+    #     #     train_dataset=tokenized_dataset["train"],
+    #     #     eval_dataset=tokenized_dataset["test"],
+    #     #     compute_metrics=compute_metrics,
+    #     # )
 
-    trainer.train()
-    trainer.evaluate()
-    trainer.save_model(f"{repository_id}/model")
-    trainer.create_model_card()
-    trainer.push_to_hub()
+    # # trainer.train()
+    # # trainer.evaluate()
+    # # trainer.save_model(f"{repository_id}/model")
+    # # trainer.create_model_card()
+    # # trainer.push_to_hub()
+
+    progress_bar = tqdm(range(training_steps))
+    model = torch.nn.DataParallel(model).to(device)
+    model.train()
+    for epoch in range(epochs):
+        for batch in train_dl:
+            # Run a batch through the model
+            outputs = model.genrate(**batch.to(device))
+            loss = loss_fn(outputs, batch)
+            loss.backward()
+
+            optimizer.step()
+            optimizer.zero_grad()
+            progress_bar.update(1)
+
+            if progress_bar.n % 100 == 0:
+                print(f"F1: {loss.item()}")
 
 if __name__ == "__main__":
     main()
