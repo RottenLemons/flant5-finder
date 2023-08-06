@@ -95,8 +95,8 @@ def main():
 
 
     def postprocess_text(preds, labels): # Convert output to text
-        preds = [pred.strip() for pred in preds]    # TODO evaluate shape
-        labels = [label.strip() for label in labels]
+        # preds = [pred.strip() for pred in preds]    # TODO evaluate shape
+        # labels = [label.strip() for label in labels]
         
         logger.info(f"Function postprocess_text\npreds: {preds}; labels:{labels}") # todo comment
 
@@ -114,8 +114,9 @@ def main():
         preds, labels = eval_preds
         if isinstance(preds, tuple):
             preds = preds[0]
-        decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True) # todo check form
         
+        logger.info(f"Function: compute_metrics\npreds: {preds}") # todo comment
+        decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True) # todo check form
         logger.info(f"Function: compute_metrics\ndecoded_preds: {decoded_preds}") # todo comment
         
         # Replace -100 in the labels as we can't decode them.
@@ -123,11 +124,12 @@ def main():
         logger.info(f"Function: compute_metrics\nlabels: {labels}") # todo comment
         
         decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
+        logger.info(f"Function: compute_metrics\ndecoded_labels: {decoded_labels}") # todo comment
 
         decoded_preds, decoded_labels = postprocess_text(decoded_preds, decoded_labels)
 
         result = metric.compute(predictions=decoded_preds, references=decoded_labels) # TODO maybe only leaving the first non-special token for evaluation.
-        result = {k: round(v * 100, 4) for k, v in result.items()}
+        result = {k: round(v * 100, 5) for k, v in result.items()}
         prediction_lens = [np.count_nonzero(pred != tokenizer.pad_token_id) for pred in preds]
         result["gen_len"] = np.mean(prediction_lens)
         return result
