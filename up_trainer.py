@@ -1,3 +1,10 @@
+import os
+import sys
+
+os.environ["TRANSFORMERS_NO_TORCHVISION"] = "1"
+if "torchvision" not in sys.modules:
+    sys.modules["torchvision"] = None
+
 import torch
 from transformers import Seq2SeqTrainer
 

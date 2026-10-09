@@ -1,3 +1,5 @@
+# Note: torchvision is not required for Flan-T5 and will cause C++ operator
+# conflicts in Kaggle/Colab. Run `pip uninstall -y torchvision` if pre-installed.
 torch==2.6.0
 transformers==4.49.0
 accelerate==1.4.0

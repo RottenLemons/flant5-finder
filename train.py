@@ -1,6 +1,15 @@
+import os
+import sys
+
+# Suppress torchvision to prevent C++ operator mismatch crashes in Kaggle/Colab
+os.environ["TRANSFORMERS_NO_TORCHVISION"] = "1"
+sys.modules["torchvision"] = None
+sys.modules["torchvision.io"] = None
+sys.modules["torchvision.ops"] = None
+sys.modules["torchvision.transforms"] = None
+
 import argparse
 import logging
-import os
 import random
 import numpy as np
 import pandas as pd
@@ -80,25 +89,35 @@ def train_and_eval_strategy(strategy, tokenized_train, tokenized_test, tokenizer
     # Load fresh model weights for fair comparison
     model = AutoModelForSeq2SeqLM.from_pretrained(args.model_id, cache_dir=args.cache_dir)
 
-    training_args = Seq2SeqTrainingArguments(
-        output_dir=output_dir,
-        per_device_train_batch_size=args.batch_size,
-        per_device_eval_batch_size=args.batch_size,
-        predict_with_generate=True,
-        fp16=torch.cuda.is_available(),
-        learning_rate=args.lr,
-        num_train_epochs=args.epochs,
-        logging_strategy="epoch",
-        evaluation_strategy="epoch",
-        save_strategy="epoch",
-        save_total_limit=1,
-        load_best_model_at_end=False,
-        push_to_hub=args.push_to_hub,
-        hub_strategy="every_save" if args.push_to_hub else None,
-        hub_model_id=f"{args.hfname}-{strategy}" if args.push_to_hub else None,
-        report_to="none",
-        seed=args.seed,
-    )
+    training_kwargs = {
+        "output_dir": output_dir,
+        "per_device_train_batch_size": args.batch_size,
+        "per_device_eval_batch_size": args.batch_size,
+        "predict_with_generate": True,
+        "fp16": torch.cuda.is_available(),
+        "learning_rate": args.lr,
+        "num_train_epochs": args.epochs,
+        "logging_strategy": "epoch",
+        "save_strategy": "epoch",
+        "save_total_limit": 1,
+        "load_best_model_at_end": False,
+        "push_to_hub": args.push_to_hub,
+        "report_to": "none",
+        "seed": args.seed,
+    }
+
+    if args.push_to_hub:
+        training_kwargs["hub_strategy"] = "every_save"
+        training_kwargs["hub_model_id"] = f"{args.hfname}-{strategy}"
+
+    # Handle eval_strategy / evaluation_strategy compatibility
+    try:
+        training_kwargs["eval_strategy"] = "epoch"
+        training_args = Seq2SeqTrainingArguments(**training_kwargs)
+    except TypeError:
+        training_kwargs.pop("eval_strategy", None)
+        training_kwargs["evaluation_strategy"] = "epoch"
+        training_args = Seq2SeqTrainingArguments(**training_kwargs)
 
     compute_metrics_fn = build_compute_metrics(tokenizer)
 
