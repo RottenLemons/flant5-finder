@@ -63,9 +63,14 @@ def build_compute_metrics(tokenizer):
         precision, recall, f1, support = precision_recall_fscore_support(
             y_true, y_pred, labels=[0, 1], zero_division=0
         )
-        macro_f1 = f1_score(y_true, y_pred, average="macro", zero_division=0)
+        macro_f1 = f1_score(y_true, y_pred, labels=[0, 1], average="macro", zero_division=0)
         acc = accuracy_score(y_true, y_pred)
         gen_lens = [np.count_nonzero(p != tokenizer.pad_token_id) for p in preds]
+
+        logger.info(
+            f"Eval breakdown - True counts: [Neg={y_true.count(0)}, Pos={y_true.count(1)}], "
+            f"Pred counts: [Neg={y_pred.count(0)}, Pos={y_pred.count(1)}]"
+        )
 
         return {
             "neg_precision": round(float(precision[0]) * 100, 2),

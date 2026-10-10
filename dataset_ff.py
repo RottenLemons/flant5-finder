@@ -59,19 +59,33 @@ def make_dataset(split=0.1, imsol="none", cache_dir=None, seed=42, sample_limit=
         seed: Random seed for reproducibility.
         sample_limit: Optional limit for testing/debugging.
     """
-    # Negative Samples (Reddit)
-    try:
-        dataset_n = datasets.load_dataset("reddit", cache_dir=cache_dir)
-        remove_cols = [c for c in ["body", "author", "normalizedBody", "subreddit", "subreddit_id", "id", "summary"] if c in dataset_n["train"].column_names]
-        dataset_n = dataset_n["train"].remove_columns(remove_cols)
+    # Negative Samples (Reddit / webis/tldr-17)
+    dataset_n = None
+    load_errors = []
+    for repo_id, kwargs in [
+        ("webis/tldr-17", {"revision": "refs/convert/parquet", "split": "train"}),
+        ("reddit", {}),
+    ]:
+        try:
+            ds = datasets.load_dataset(repo_id, cache_dir=cache_dir, **kwargs)
+            if isinstance(ds, datasets.DatasetDict):
+                dataset_n = ds["train"]
+            else:
+                dataset_n = ds
+            break
+        except Exception as e:
+            load_errors.append(f"{repo_id}: {e}")
+
+    if dataset_n is None:
+        raise RuntimeError(
+            f"Could not load negative Reddit dataset. Details:\n" + "\n".join(load_errors)
+        )
+
+    remove_cols = [c for c in ["body", "author", "normalizedBody", "subreddit", "subreddit_id", "id", "summary"] if c in dataset_n.column_names]
+    dataset_n = dataset_n.remove_columns(remove_cols)
+    if "content" in dataset_n.column_names:
         dataset_n = dataset_n.rename_column("content", "text")
-        dataset_n = dataset_n.add_column("labels", ["no"] * len(dataset_n))
-    except Exception:
-        # Fallback for offline or testing environments
-        dataset_n = datasets.Dataset.from_dict({
-            "text": ["I love watching movies on weekends.", "The weather today is cloudy with rain."],
-            "labels": ["no", "no"]
-        })
+    dataset_n = dataset_n.add_column("labels", ["no"] * len(dataset_n))
 
     # Positive Samples (InstructionWild)
     dataset_p = load_instruction_wild(cache_dir=cache_dir)
@@ -79,8 +93,11 @@ def make_dataset(split=0.1, imsol="none", cache_dir=None, seed=42, sample_limit=
         dataset_p = dataset_p.remove_columns(["__index_level_0__"])
 
     if sample_limit:
-        dataset_n = dataset_n.shuffle(seed=seed).select(range(min(sample_limit, len(dataset_n))))
-        dataset_p = dataset_p.shuffle(seed=seed).select(range(min(sample_limit, len(dataset_p))))
+        # Preserve the ~35:1 imbalance ratio in the subset cap
+        pos_count = max(1, int(sample_limit / 36))
+        neg_count = sample_limit - pos_count
+        dataset_n = dataset_n.shuffle(seed=seed).select(range(min(neg_count, len(dataset_n))))
+        dataset_p = dataset_p.shuffle(seed=seed).select(range(min(pos_count, len(dataset_p))))
 
     # Mix and create fixed train/test split with deterministic seed
     dataset_mix = datasets.concatenate_datasets([dataset_n, dataset_p]).shuffle(seed=seed)
